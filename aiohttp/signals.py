@@ -1,87 +1,74 @@
-import abc
+from collections.abc import MutableSequence
 from inspect import signature
 
 import asyncio
 
-class Signal(metaclass=abc.ABCMeta):
+
+class Signal(MutableSequence):
+    """A class for signals handling, a list for receivers.
+
+    To connect a receiver coroutine to a signal, use the
+    signal.append(receiver) method and family.
+
+    For disconnecting just drop receiver from the list in preferable
+    way, e.g. signal.remove(receiver) or del signal[recv_index]
+
+    Signals are fired using yield from signal.send(), which takes
+    named arguments.
     """
-    Abstract base class for signals.
 
-    To connect a callback to a signal, use the :meth:`callback` method. If you
-    wish to pass additional arguments to your callback,
-    use :meth:`functools.partial`. Signals can be disconnected again using
-    :meth:`disconnect`. Callbacks are executed in an arbitrary order.
-
-    There are two declared concrete subclasses, :class:`FunctionSignal`, which
-    dispatches to plain function callbacks, and :class:`CoroutineSignal`,
-    which accepts coroutine functions as callbacks.
-
-    Signals are fired using :meth:`send`, which takes named arguments. The
-    :meth:`send` method for :class:`CoroutineSignal` is itself a coroutine
-    function.
-    """
     def __init__(self, parameters):
         self._parameters = frozenset(parameters)
-        self._receivers = set()
+        self._receivers = []
 
-    def connect(self, receiver):
-        """
-        Connect a receiver.
+    # all long following list of functions is here because I want make
+    # Signal to be like-a-list but without .copy() and .sort()
+    # also I'd like making the implementation fast.
 
-        :param collections.abc.Callable receiver: A function to be called
-            whenever the signal is fired.
-        :raises TypeError: if ``receiver`` isn't a callable, or doesn't have
-            a call signature that supports the signals parameters.
-        """
-        # Check that the callback can be called with the given parameter names
+    def __len__(self):
+        return len(self._receivers)
+
+    def __iter__(self):
+        return iter(self._receivers)
+
+    def __contains__(self, value):
+        return value in self._receivers
+
+    def __getitem__(self, index):
+        return self._receivers[index]
+
+    def __reversed__(self):
+        return reversed(self._receivers)
+
+    def __setitem__(self, index, receiver):
+        assert not asyncio.iscoroutinefunction(receiver), receiver
         if __debug__:
             signature(receiver).bind(**{p: None for p in self._parameters})
-        self._receivers.add(receiver)
+        self._receivers[index] = receiver
 
-    def disconnect(self, receiver):
-        """
-        Disconnect a receiver.
+    def __delitem__(self, index):
+        del self._receivers[index]
 
-        :param collections.abc.Callable receiver: A function to no longer
-            be called whenever the signal is fired.
+    def insert(self, index, receiver):
+        assert not asyncio.iscoroutinefunction(receiver), receiver
+        if __debug__:
+            signature(receiver).bind(**{p: None for p in self._parameters})
+        self._receivers.insert(index, receiver)
 
-        :raises KeyError: if the receiver wasn't already registered.
-        """
-        self._receivers.remove(receiver)
+    def append(self, receiver):
+        # Check that the callback can be called with the given parameter names
+        assert not asyncio.iscoroutinefunction(receiver), receiver
+        if __debug__:
+            signature(receiver).bind(**{p: None for p in self._parameters})
+        self._receivers.append(receiver)
 
-    @abc.abstractmethod
+    def clear(self):
+        self._receivers.clear()
+
+    @asyncio.coroutine
     def send(self, **kwargs):
         """
         Sends data to all registered receivers.
         """
-        pass
-
-class FunctionSignal(Signal):
-    """
-    A signal type that dispatches to plain functions.
-
-    See :class:`Signal` for documentation.
-    """
-    def connect(self, receiver):
-        assert not asyncio.iscoroutinefunction(receiver), receiver
-        super().connect(receiver)
-
-    def send(self, **kwargs):
-        for receiver in self._receivers:
-            receiver(**kwargs)
-
-class CoroutineSignal(Signal):
-    """
-    A signal type that dispatches to coroutine functions.
-
-    See :class:`Signal` for documentation.
-    """
-    def connect(self, receiver):
-        assert asyncio.iscoroutinefunction(receiver), receiver
-        super().connect(receiver)
-
-    @asyncio.coroutine
-    def send(self, **kwargs):
         for receiver in self._receivers:
             yield from receiver(**kwargs)
-
