@@ -28,11 +28,7 @@ class _upstr(str):
             pass
         else:
             val = str(val)
-        val = val.upper()
         return str.__new__(cls, val)
-
-    def upper(self):
-        return self
 
 
 class _Base:
@@ -280,20 +276,19 @@ class _CIMultiDict(_CIBase, _MultiDict):
 
     def add(self, key, value):
         """Add the key and value, not overwriting any previous value."""
-        super().add(key.upper(), value)
+        super().add(key, value)
 
     def __setitem__(self, key, value):
-        super().__setitem__(key.upper(), value)
+        super().__setitem__(key, value)
 
     def __delitem__(self, key):
-        super().__delitem__(key.upper())
+        super().__delitem__(key)
 
     def _replace(self, key, value):
-        super()._replace(key.upper(), value)
+        super()._replace(key, value)
 
     def setdefault(self, key, default=None):
         """Return value for key, set value to default if key is not present."""
-        key = key.upper()
         return super().setdefault(key, default)
 
 
